@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use bytes::Bytes;
 use crossbeam_skiplist::SkipMap;
 use ouroboros::self_referencing;
@@ -37,18 +37,32 @@ pub(crate) fn map_bound(bound: Bound<&[u8]>) -> Bound<Bytes> {
 
 impl MemTable {
     /// Create a new mem-table.
-    pub fn create(_id: usize) -> Self {
-        unimplemented!()
+    pub fn create(id: usize) -> Self {
+        Self {
+            map: Arc::new(SkipMap::new()),
+            wal: Option::None,
+            id,
+            approximate_size: Arc::new(AtomicUsize::new(1)),
+        }
     }
 
     /// Create a new mem-table with WAL
-    pub fn create_with_wal(_id: usize, _path: impl AsRef<Path>) -> Result<Self> {
-        unimplemented!()
+    pub fn create_with_wal(id: usize, path: impl AsRef<Path>) -> Result<Self> {
+        let mut without_wal = Self::create(id);
+        // without_wal.wal = Some(Wal::create(path)?);
+        Ok(without_wal)
     }
 
     /// Create a memtable from WAL
-    pub fn recover_from_wal(_id: usize, _path: impl AsRef<Path>) -> Result<Self> {
-        unimplemented!()
+    pub fn recover_from_wal(id: usize, path: impl AsRef<Path>) -> Result<Self> {
+        let mut skiplist = SkipMap::new();
+        Wal::recover(path, &mut skiplist)?;
+        Ok(Self {
+            map: Arc::new(skiplist),
+            wal: None,
+            id: id,
+            approximate_size: Arc::new(AtomicUsize::new(1)),
+        })
     }
 
     pub fn for_testing_put_slice(&self, key: &[u8], value: &[u8]) -> Result<()> {
@@ -68,17 +82,28 @@ impl MemTable {
     }
 
     /// Get a value by key.
-    pub fn get(&self, _key: &[u8]) -> Option<Bytes> {
-        unimplemented!()
+    pub fn get(&self, key: &[u8]) -> Option<Bytes> {
+        let entry = self.map.get(key)?;
+        Some(entry.value().clone())
     }
 
     /// Put a key-value pair into the mem-table.
     ///
     /// In week 1, day 1, simply put the key-value pair into the skipmap.
     /// In week 2, day 6, also flush the data to WAL.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        unimplemented!()
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        if self.map.contains_key(key) {
+            self.map.remove(key);
+        }
+        self.map
+            .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
+        let add_size = key.len() + value.len();
+        self.approximate_size.fetch_add(add_size, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
     }
+    // pub fn force_freeze_memtable(&self) {
+    //     self.
+    // }
 
     pub fn sync_wal(&self) -> Result<()> {
         if let Some(ref wal) = self.wal {
