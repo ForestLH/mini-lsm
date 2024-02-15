@@ -1,7 +1,7 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
 use std::collections::HashMap;
-use std::mem::{replace};
+use std::mem::replace;
 use std::ops::{Bound, Deref};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
@@ -16,16 +16,18 @@ use crate::compact::{
     CompactionController, CompactionOptions, LeveledCompactionController, LeveledCompactionOptions,
     SimpleLeveledCompactionController, SimpleLeveledCompactionOptions, TieredCompactionController,
 };
+use crate::iterators::merge_iterator::MergeIterator;
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::lsm_storage;
 use crate::manifest::Manifest;
-use crate::mem_table::{self, MemTable};
+use crate::mem_table::{self, MemTable, MemTableIterator};
 use crate::mvcc::LsmMvccInner;
 use crate::table::SsTable;
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 
 /// Represents the state of the storage engine.
+/// 里面有一个memtable还有一组imm_memtables
 #[derive(Clone)]
 pub struct LsmStorageState {
     /// The current memtable.
@@ -65,9 +67,7 @@ impl LsmStorageState {
             sstables: Default::default(),
         }
     }
-    fn testa(&mut self) {
-
-    }
+    fn testa(&mut self) {}
 }
 
 #[derive(Debug, Clone)]
@@ -394,9 +394,17 @@ impl LsmStorageInner {
     /// Create an iterator over a range of keys.
     pub fn scan(
         &self,
-        _lower: Bound<&[u8]>,
-        _upper: Bound<&[u8]>,
+        lower: Bound<&[u8]>,
+        upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
-        unimplemented!()
+        let sta = self.state.read();
+        let mem_table_iter = sta.memtable.scan(lower, upper);
+        let mut table_iters = vec![];
+        table_iters.push(Box::new(mem_table_iter));
+        for it in &sta.imm_memtables {
+            table_iters.push(Box::new(it.scan(lower, upper)));
+        }
+        let ret_iter = FusedIterator::new(LsmIterator::new(MergeIterator::create(table_iters))?);
+        Ok(ret_iter)
     }
 }
