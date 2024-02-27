@@ -1,17 +1,15 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
 pub(crate) mod bloom;
 mod builder;
 mod iterator;
 
 use std::fs::File;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
 pub use builder::SsTableBuilder;
-use bytes::Buf;
+use bytes::{Buf, BufMut, Bytes};
 pub use iterator::SsTableIterator;
 
 use crate::block::Block;
@@ -36,15 +34,44 @@ impl BlockMeta {
     /// in order to help keep track of `first_key` when decoding from the same buffer in the future.
     pub fn encode_block_meta(
         block_meta: &[BlockMeta],
-        #[allow(clippy::ptr_arg)] // remove this allow after you finish
         buf: &mut Vec<u8>,
     ) {
-        unimplemented!()
+        /// | number of  BlockMetas |                             BlockMeta 0                                            |  BlockMeta 1 |
+        /// |       number(2B)      | BlockMeta.offset(4B) | first_key_len(4B) | first_key | last_key_len(4B) | last_key |   ...        |
+        buf.put_u16(block_meta.len() as u16);
+        for each_meta in block_meta {
+            let first_key_len = each_meta.first_key.len() as u32;
+            let last_key_len = each_meta.last_key.len() as u32;
+            buf.put_u32(each_meta.offset as u32);
+
+            buf.put_u32(first_key_len);
+            buf.extend_from_slice(each_meta.first_key.raw_ref());
+
+            buf.put_u32(last_key_len);
+            buf.extend_from_slice(each_meta.last_key.raw_ref());
+        }
     }
 
     /// Decode block meta from a buffer.
-    pub fn decode_block_meta(buf: impl Buf) -> Vec<BlockMeta> {
-        unimplemented!()
+    pub fn decode_block_meta(mut buf: impl Buf) -> Vec<BlockMeta> {
+        let mut metas: Vec<BlockMeta> = vec![];
+        let number = buf.get_u16();
+        for _ in 0..number {
+            let offset = buf.get_u32();
+            let first_key_len = buf.get_u32();
+            let first_key = buf.copy_to_bytes(first_key_len as usize);
+
+            let last_key_len = buf.get_u32();
+            let last_key = buf.copy_to_bytes(last_key_len as usize);
+
+            metas.push(BlockMeta {
+                offset: offset as usize,
+                first_key: KeyBytes::from_bytes(first_key),
+                last_key: KeyBytes::from_bytes(last_key),
+            });
+        }
+        metas
+
     }
 }
 
@@ -108,7 +135,31 @@ impl SsTable {
 
     /// Open SSTable from a file.
     pub fn open(id: usize, block_cache: Option<Arc<BlockCache>>, file: FileObject) -> Result<Self> {
-        unimplemented!()
+        let mut metas= vec![];
+        let mut block_meta_offset: usize = 0;
+        file.0.as_ref().map(|mut file| {
+            let mut buf_vec = vec![];
+            file.read_to_end(&mut buf_vec).unwrap();
+            let mut all_buf = Bytes::from(buf_vec);
+            let mut buf = all_buf.copy_to_bytes(all_buf.len() - 4);
+            block_meta_offset = all_buf.get_u32() as usize;
+            buf.copy_to_bytes(block_meta_offset);
+            metas = BlockMeta::decode_block_meta(buf);
+        });
+
+        let first_key = metas.first().unwrap().first_key.clone();
+        let last_key = metas.last().unwrap().last_key.clone();
+        Ok(Self {
+            file,
+            block_meta: metas,
+            block_meta_offset,
+            id,
+            block_cache,
+            first_key,
+            last_key,
+            bloom: None,
+            max_ts: 0,
+        })
     }
 
     /// Create a mock SST with only first key + last key metadata
@@ -171,5 +222,39 @@ impl SsTable {
 
     pub fn max_ts(&self) -> u64 {
         self.max_ts
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Buf;
+    use clap::builder::Str;
+
+    #[test]
+    fn test_buf1() {
+        let mut whole_bytes = (&b"hello world"[..]);
+        let bytes = whole_bytes.copy_to_bytes(5);
+        assert_eq!(&bytes[..], &b"hello"[..]);
+        assert_eq!(&whole_bytes[..], &b" world"[..]);
+    }
+    #[test]
+    fn test_buf2() {
+        let mut whole_bytes = (&b"hello world"[..]);
+        // whole_bytes.len();
+        let bytes = whole_bytes.copy_to_bytes(whole_bytes.len() - 6);
+        // assert_eq!(&whole_bytes[..], &b"hello"[..]);
+        assert_eq!(&bytes[..], &b" world"[..]);
+    }
+    #[derive(Debug)]
+    struct Person(String);
+    #[test]
+    fn test_iter() {
+        let mut arr = vec![Person(String::from("a")), Person(String::from("b"))];
+        foo(arr.as_ref());
+    }
+    fn foo(arr: &[Person]) {
+        let _ = arr.iter().map(|p| {
+            println!("{:?}", p);
+        });
     }
 }
