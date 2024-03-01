@@ -8,9 +8,9 @@ use anyhow::Result;
 use bytes::{BufMut, Bytes};
 
 use super::{BlockMeta, SsTable};
-use crate::{block::BlockBuilder, key::KeySlice, lsm_storage::BlockCache};
 use crate::key::KeyBytes;
 use crate::table::FileObject;
+use crate::{block::BlockBuilder, key::KeySlice, lsm_storage::BlockCache};
 
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
@@ -26,7 +26,7 @@ impl SsTableBuilder {
     /// Create a builder based on target block size.
     pub fn new(block_size: usize) -> Self {
         Self {
-            builder:  BlockBuilder::new(block_size),
+            builder: BlockBuilder::new(block_size),
             first_key: vec![],
             last_key: vec![],
             data: vec![],
@@ -51,14 +51,11 @@ impl SsTableBuilder {
 
         // judge current block is full
         if !self.builder.add(key, value) {
-
-            let old_block_builder = std::mem::replace(&mut self.builder, BlockBuilder::new(self.block_size));
+            let old_block_builder =
+                std::mem::replace(&mut self.builder, BlockBuilder::new(self.block_size));
             let old_block = old_block_builder.build();
             let block_bytes = old_block.encode();
             self.data.extend(block_bytes);
-
-            let old_meta = self.meta.last_mut().unwrap();
-            old_meta.last_key = KeyBytes::from_bytes(Bytes::copy_from_slice(key.raw_ref()));
 
             self.meta.push(BlockMeta {
                 offset: self.data.len(),
@@ -80,9 +77,7 @@ impl SsTableBuilder {
     /// Since the data blocks contain much more data than meta blocks, just return the size of data
     /// blocks here.
     pub fn estimated_size(&self) -> usize {
-        self.meta.iter().map(|block_meta| {
-            block_meta.offset
-        }).sum()
+        self.meta.iter().map(|block_meta| block_meta.offset).sum()
     }
 
     /// Builds the SSTable and writes it to the given path. Use the `FileObject` structure to manipulate the disk objects.
@@ -92,9 +87,12 @@ impl SsTableBuilder {
         block_cache: Option<Arc<BlockCache>>,
         path: impl AsRef<Path>,
     ) -> Result<SsTable> {
-        let block_meta_offset = self.data.len();
+        let current_block_bytes = self.builder.build().encode();
 
         let mut serialized_data = self.data.clone();
+        serialized_data.extend(current_block_bytes);
+        let block_meta_offset = serialized_data.len();
+
         BlockMeta::encode_block_meta(&self.meta, &mut serialized_data);
         serialized_data.put_u32(block_meta_offset as u32);
         Ok(SsTable {
@@ -129,7 +127,7 @@ mod tests {
                 last_key: Default::default(),
             });
         }
-        assert_eq!(sst_builder.estimated_size(), 20*5);
+        assert_eq!(sst_builder.estimated_size(), 20 * 5);
     }
     #[test]
     fn test_vec_append_bytes() {

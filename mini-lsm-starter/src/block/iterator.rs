@@ -103,7 +103,7 @@ impl BlockIterator {
                 block,
                 key: target_key,
                 value_range: (0, offset_len),
-                idx: 0,
+                idx: target_idx,
                 first_key: Default::default(),
             }
         }
