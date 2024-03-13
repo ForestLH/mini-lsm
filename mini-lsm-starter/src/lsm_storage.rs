@@ -289,9 +289,10 @@ impl LsmStorageInner {
 
     /// Get a key from the storage. In day 7, this can be further optimized by using a bloom filter.
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
-        // let _ = self.state_lock.lock();
-        let binding = self.state.read();
-        let lsm_storage = binding.deref();
+        let lsm_storage = {
+            let guard = self.state.read();
+            Arc::clone(&guard)
+        };
         let res = lsm_storage.memtable.get(key);
         if let Some(val) = &res {
             if val.is_empty() {
@@ -423,17 +424,20 @@ impl LsmStorageInner {
         lower: Bound<&[u8]>,
         upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
-        let sta = self.state.read();
-        let mem_table_iter = sta.memtable.scan(lower, upper);
+        let snapshot = {
+            let guard = self.state.read();
+            Arc::clone(&guard)
+        };
+        let mem_table_iter = snapshot.memtable.scan(lower, upper);
         let mut mem_table_iters = vec![];
         mem_table_iters.push(Box::new(mem_table_iter));
-        for it in &sta.imm_memtables {
+        for it in &snapshot.imm_memtables {
             mem_table_iters.push(it.scan(lower, upper).into());
         }
         let mut sst_table_iters = vec![];
         //todo(leehao): 这里只做了l0层的，还有其他层的sst没做
-        for l0_sst_id in &sta.l0_sstables {
-            let sst = sta.sstables.get(l0_sst_id).unwrap();
+        for l0_sst_id in &snapshot.l0_sstables {
+            let sst = snapshot.sstables.get(l0_sst_id).unwrap();
             let iter = match lower {
                 Bound::Included(lower_key) => {
                     SsTableIterator::create_and_seek_to_key(sst.clone(), KeySlice::from_slice(lower_key))?
