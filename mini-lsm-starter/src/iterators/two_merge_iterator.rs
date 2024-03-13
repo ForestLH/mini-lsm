@@ -1,6 +1,7 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
+use std::cmp::Ordering::{Equal, Greater, Less};
 use anyhow::Result;
 
 use super::StorageIterator;
@@ -11,6 +12,8 @@ pub struct TwoMergeIterator<A: StorageIterator, B: StorageIterator> {
     a: A,
     b: B,
     // Add fields as need
+    // Indicates whether it is currently a or B
+    current: i32,
 }
 
 impl<
@@ -19,7 +22,24 @@ impl<
     > TwoMergeIterator<A, B>
 {
     pub fn create(a: A, b: B) -> Result<Self> {
-        unimplemented!()
+        let mut current = 0;
+        if a.is_valid() && b.is_valid() {
+            current = if a.key().cmp(&b.key()) == Greater {
+                1
+            } else {
+                0
+            };
+        } else if a.is_valid() {
+            current = 0;
+        } else {
+            current = 1;
+        }
+
+        Ok(TwoMergeIterator {
+            a,
+            b,
+            current,
+        })
     }
 }
 
@@ -31,18 +51,62 @@ impl<
     type KeyType<'a> = A::KeyType<'a>;
 
     fn key(&self) -> Self::KeyType<'_> {
-        unimplemented!()
+        if self.current == 0 {
+            self.a.key()
+        } else {
+            self.b.key()
+        }
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        if self.current == 0 {
+            self.a.value()
+        } else {
+            self.b.value()
+        }
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        if self.current == 0 {
+            self.a.is_valid()
+        } else {
+            self.b.is_valid()
+        }
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        if self.a.is_valid() && self.b.is_valid() {
+            let order = self.a.key().cmp(&self.b.key());
+            match order {
+                Less => {
+                    self.a.next()?;
+                }
+                Equal => {
+                    self.a.next()?;
+                    self.b.next()?;
+                }
+                Greater => {
+                    self.b.next()?;
+                }
+            }
+            if self.a.is_valid() && self.b.is_valid() {
+                self.current = if self.a.key().cmp(&self.b.key()) == Greater {
+                    1
+                } else {
+                    0
+                }
+            } else if self.a.is_valid() {
+                self.current = 0;
+            } else {
+                self.current = 1;
+            }
+        } else if self.a.is_valid() {
+            self.a.next()?;
+            self.current = 0;
+        } else if self.b.is_valid() {
+            self.b.next()?;
+            self.current = 1;
+        }
+        Ok(())
     }
 }

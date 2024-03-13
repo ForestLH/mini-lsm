@@ -51,7 +51,7 @@ impl MemTable {
     /// Create a new mem-table with WAL
     pub fn create_with_wal(id: usize, path: impl AsRef<Path>) -> Result<Self> {
         let mut without_wal = Self::create(id);
-        // without_wal.wal = Some(Wal::create(path)?);
+        without_wal.wal = Some(Wal::create(path)?);
         Ok(without_wal)
     }
 
