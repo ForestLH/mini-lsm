@@ -409,6 +409,7 @@ impl LsmStorageInner {
             mem_table_iters.push(it.scan(lower, upper).into());
         }
         let mut sst_table_iters = vec![];
+        //todo(leehao): 这里只做了l0层的，还有其他层的sst没做
         for l0_sst_id in &sta.l0_sstables {
             let sst = sta.sstables.get(l0_sst_id).unwrap();
             let iter = match lower {

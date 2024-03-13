@@ -1,22 +1,20 @@
-#![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
-#![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
-
-use std::cmp::Ordering::{Greater, Less};
-use std::collections::Bound;
 use anyhow::{anyhow, bail, Error, Result};
 use bytes::Bytes;
 use nom::combinator::value;
+use std::cmp::Ordering::{Greater, Less};
+use std::collections::Bound;
 
+use crate::iterators::two_merge_iterator::TwoMergeIterator;
+use crate::key::KeySlice;
+use crate::table::SsTableIterator;
 use crate::{
     iterators::{merge_iterator::MergeIterator, StorageIterator},
     mem_table::MemTableIterator,
 };
-use crate::iterators::two_merge_iterator::TwoMergeIterator;
-use crate::key::KeySlice;
-use crate::table::SsTableIterator;
 
 /// Represents the internal type for an LSM iterator. This type will be changed across the tutorial for multiple times.
-type LsmIteratorInner = TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<SsTableIterator>>;
+type LsmIteratorInner =
+    TwoMergeIterator<MergeIterator<MemTableIterator>, MergeIterator<SsTableIterator>>;
 
 pub struct LsmIterator {
     inner: LsmIteratorInner,
@@ -37,30 +35,36 @@ impl LsmIterator {
             self.inner.next()?;
         }
         match &self.end_bound {
-            Bound::Included(upper) => {
-                if self.inner.is_valid() && !self.inner.value().is_empty() && self.key().cmp(upper) != Less {
-                    Err(anyhow!("lsm iter is over bounded!"))
+            Bound::Included(end_bound) => {
+                if self.inner.is_valid()
+                    && !self.inner.value().is_empty()
+                    && self.key().cmp(end_bound) == Greater
+                {
+                    Err(anyhow!(
+                        "lsm iter current key is {}, but end bound(included) key is {}",
+                        String::from_utf8_lossy(self.key()),
+                        String::from_utf8_lossy(end_bound)
+                    ))
                 } else {
                     Ok(())
                 }
             }
-            Bound::Excluded(upper) => {
-                if self.inner.is_valid() && !self.inner.value().is_empty() && self.key().cmp(upper) == Greater {
-                    Err(anyhow!("lsm iter is over bounded!"))
+            Bound::Excluded(end_bound) => {
+                if self.inner.is_valid()
+                    && !self.inner.value().is_empty()
+                    && self.key().cmp(end_bound) != Less
+                {
+                    Err(anyhow!(
+                        "lsm iter current key is {}, but end bound(excluded) key is {}",
+                        String::from_utf8_lossy(self.key()),
+                        String::from_utf8_lossy(end_bound)
+                    ))
                 } else {
                     Ok(())
                 }
             }
-            Bound::Unbounded => {
-                Ok(())
-            }
+            Bound::Unbounded => Ok(()),
         }
-        // let upper = *self.end_bound;
-        // if self.inner.is_valid() && !self.inner.value().is_empty()
-        //     && self.key().cmp(upper) == Greater {
-        //     return Err(Error::from("LsmIterator over bounded!"));
-        // }
-        // Ok(())
     }
 }
 

@@ -133,41 +133,6 @@ fn test_task1_merge_5() {
     check_iter_result_by_key(&mut iter, vec![])
 }
 
-// todo(leehao): 这里先测试一下俩sst的merge iter对不对
-#[test]
-fn test_task2_sst_scan() {
-    let dir = tempdir().unwrap();
-    let sst1 = generate_sst(
-        10,
-        dir.path().join("10.sst"),
-        vec![
-            (Bytes::from_static(b"0"), Bytes::from_static(b"2333333")),
-            (Bytes::from_static(b"4"), Bytes::from_static(b"23")),
-        ],
-        None,
-    );
-    let sst2 = generate_sst(
-        11,
-        dir.path().join("11.sst"),
-        vec![(Bytes::from_static(b"4"), Bytes::from_static(b""))],
-        None,
-    );
-    let iter1 = SsTableIterator::create_and_seek_to_first(Arc::new(sst1)).unwrap();
-    let iter2 = SsTableIterator::create_and_seek_to_first(Arc::new(sst2)).unwrap();
-    let mut merge_iter = MergeIterator::create(vec![Box::new(iter1), Box::new(iter2)]);
-
-    let expected = vec![
-        (Bytes::from("0"), Bytes::from("2333333")),
-    ];
-    for (k, v) in &expected {
-        let real_key = merge_iter.key();
-        let real_value = merge_iter.value();
-        assert_eq!(real_key.raw_ref(), k);
-        assert_eq!(real_value, v);
-    }
-    assert!(!merge_iter.is_valid());
-}
-
 #[test]
 fn test_task2_storage_scan() {
     let dir = tempdir().unwrap();
