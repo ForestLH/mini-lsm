@@ -100,7 +100,8 @@ impl MemTable {
         self.map
             .insert(Bytes::copy_from_slice(key), Bytes::copy_from_slice(value));
         let add_size = key.len() + value.len();
-        self.approximate_size.fetch_add(add_size, std::sync::atomic::Ordering::Relaxed);
+        self.approximate_size
+            .fetch_add(add_size, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
     // pub fn force_freeze_memtable(&self) {
@@ -119,17 +120,16 @@ impl MemTable {
         let (l, u) = (map_bound(lower), map_bound(upper));
         let mut iter = MemTableIteratorBuilder {
             map: self.map.clone(),
-            iter_builder: |map| {
-                map.range((l, u))
-            },
-            item: (Bytes::new(), Bytes::new())
-        }.build();
+            iter_builder: |map| map.range((l, u)),
+            item: (Bytes::new(), Bytes::new()),
+        }
+        .build();
         // let entry = self.map.iter().next();  // 这样是不行的，这样相当于是重新拿到了一个iter，
         // 并没有实际上移动需要返回的iter这个MemTableIterator类型的迭代器
         // iter.with_item_mut(|item| {*item = MemTableIterator::entry_to_item(entry)});
 
-        let item = iter.with_iter_mut(|it| {MemTableIterator::entry_to_item(it.next())});
-        iter.with_item_mut(|field| {*field = item});
+        let item = iter.with_iter_mut(|it| MemTableIterator::entry_to_item(it.next()));
+        iter.with_item_mut(|field| *field = item);
         iter
     }
 
@@ -173,11 +173,9 @@ pub struct MemTableIterator {
 }
 impl MemTableIterator {
     pub fn entry_to_item(entry: Option<Entry<'_, Bytes, Bytes>>) -> (Bytes, Bytes) {
-        entry.map(|en| {
-            (en.key().clone(), en.value().clone())
-        }).unwrap_or_else(|| {
-            (Bytes::from_static(&[]), Bytes::from_static(&[]))
-        })
+        entry
+            .map(|en| (en.key().clone(), en.value().clone()))
+            .unwrap_or_else(|| (Bytes::from_static(&[]), Bytes::from_static(&[])))
     }
 }
 
@@ -200,9 +198,7 @@ impl StorageIterator for MemTableIterator {
     }
 
     fn next(&mut self) -> Result<()> {
-        let next_item = self.with_iter_mut(|iter| {
-            MemTableIterator::entry_to_item(iter.next())
-        });
+        let next_item = self.with_iter_mut(|iter| MemTableIterator::entry_to_item(iter.next()));
         self.with_mut(|x| {
             *x.item = next_item;
         });

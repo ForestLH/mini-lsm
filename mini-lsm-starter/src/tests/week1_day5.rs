@@ -144,7 +144,6 @@ fn test_task2_storage_scan() {
     /// memtable and immtable layout is like this              00:2333,     1:"",     2:2333,   3:233333,
     /// sst2                                                                                                4:""
     /// sst1                                        0:2333333, 00:2333333,                                  4:23
-
     let sst1 = generate_sst(
         10,
         dir.path().join("10.sst"),

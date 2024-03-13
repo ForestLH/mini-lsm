@@ -1,8 +1,8 @@
 #![allow(unused_variables)] // TODO(you): remove this lint after implementing this mod
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
-use std::cmp::Ordering::{Equal, Greater, Less};
 use anyhow::Result;
+use std::cmp::Ordering::{Equal, Greater, Less};
 
 use super::StorageIterator;
 
@@ -35,11 +35,7 @@ impl<
             current = 1;
         }
 
-        Ok(TwoMergeIterator {
-            a,
-            b,
-            current,
-        })
+        Ok(TwoMergeIterator { a, b, current })
     }
 }
 

@@ -143,7 +143,7 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
         }
 
         if let Some(mut heap_top) = self.iters.peek_mut() {
-            if  *heap_top > *cur_iter  && heap_top.1.is_valid() {
+            if *heap_top > *cur_iter && heap_top.1.is_valid() {
                 std::mem::swap(cur_iter, &mut heap_top);
             }
         }

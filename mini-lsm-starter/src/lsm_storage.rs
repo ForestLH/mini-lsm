@@ -129,7 +129,7 @@ pub enum CompactionFilter {
 }
 
 /// The storage interface of the LSM tree.
-pub(crate) struct LsmStorageInner {
+pub struct LsmStorageInner {
     pub(crate) state: Arc<RwLock<Arc<LsmStorageState>>>,
     pub(crate) state_lock: Mutex<()>,
     path: PathBuf,
@@ -315,21 +315,25 @@ impl LsmStorageInner {
         let mut iters = vec![];
         for l0_sst_id in &lsm_storage.l0_sstables {
             let sst = lsm_storage.sstables.get(l0_sst_id).unwrap();
-            let _ = SsTableIterator::create_and_seek_to_key(sst.clone(), KeySlice::from_slice(key)).map(|iter| {
-                iters.push(Box::new(iter));
-            });
+            let _ = SsTableIterator::create_and_seek_to_key(sst.clone(), KeySlice::from_slice(key))
+                .map(|iter| {
+                    iters.push(Box::new(iter));
+                });
         }
         let mut l0_sst_merge_iter = MergeIterator::create(iters);
-        while l0_sst_merge_iter.is_valid() &&
-            l0_sst_merge_iter.key().cmp(&Key::from_slice(key)) == Less {
+        while l0_sst_merge_iter.is_valid()
+            && l0_sst_merge_iter.key().cmp(&Key::from_slice(key)) == Less
+        {
             l0_sst_merge_iter.next()?;
         }
-        if l0_sst_merge_iter.is_valid() && l0_sst_merge_iter.key().cmp(&Key::from_slice(key)) == Equal {
+        if l0_sst_merge_iter.is_valid()
+            && l0_sst_merge_iter.key().cmp(&Key::from_slice(key)) == Equal
+        {
             return if l0_sst_merge_iter.value().is_empty() {
                 Ok(None)
             } else {
                 Ok(Some(Bytes::copy_from_slice(l0_sst_merge_iter.value())))
-            }
+            };
         }
         // todo(leehao): just look at level 0, need to look at other layers
         Ok(None)
@@ -439,17 +443,19 @@ impl LsmStorageInner {
         for l0_sst_id in &snapshot.l0_sstables {
             let sst = snapshot.sstables.get(l0_sst_id).unwrap();
             let iter = match lower {
-                Bound::Included(lower_key) => {
-                    SsTableIterator::create_and_seek_to_key(sst.clone(), KeySlice::from_slice(lower_key))?
-                }
+                Bound::Included(lower_key) => SsTableIterator::create_and_seek_to_key(
+                    sst.clone(),
+                    KeySlice::from_slice(lower_key),
+                )?,
                 Bound::Excluded(lower_key) => {
-                    let mut iter = SsTableIterator::create_and_seek_to_key(sst.clone(), KeySlice::from_slice(lower_key))?;
+                    let mut iter = SsTableIterator::create_and_seek_to_key(
+                        sst.clone(),
+                        KeySlice::from_slice(lower_key),
+                    )?;
                     iter.next()?;
                     iter
                 }
-                Bound::Unbounded => {
-                    SsTableIterator::create_and_seek_to_first(sst.clone())?
-                }
+                Bound::Unbounded => SsTableIterator::create_and_seek_to_first(sst.clone())?,
             };
             sst_table_iters.push(Box::new(iter));
         }
@@ -467,7 +473,7 @@ mod tests {
         let arr = vec![1, 2, 3];
         let mut expected = 1;
         for it in arr {
-            assert_eq!(it , expected);
+            assert_eq!(it, expected);
             expected += 1;
         }
     }
