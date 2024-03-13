@@ -11,11 +11,6 @@ use crate::{
     iterators::two_merge_iterator::TwoMergeIterator,
     lsm_storage::{LsmStorageInner, LsmStorageOptions},
 };
-use crate::iterators::merge_iterator::MergeIterator;
-use crate::iterators::StorageIterator;
-use crate::lsm_iterator::LsmIterator;
-use crate::lsm_storage::LsmStorageState;
-use crate::table::SsTableIterator;
 
 #[test]
 fn test_task1_merge_1() {
@@ -227,6 +222,10 @@ fn test_task3_storage_get() {
         vec![(Bytes::from_static(b"4"), Bytes::from_static(b""))],
         Some(storage.block_cache.clone()),
     );
+    // immemtable (00, 2333)           (1, 233) (2, 2333)
+    // memtable                        (1, "")            (3, 23333)
+    // sst2                                                         (4, "")
+    // sst1 (00, 2333333) (0, 2333333)                              (4, 23)
     {
         let mut state = storage.state.write();
         let mut snapshot = state.as_ref().clone();

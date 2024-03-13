@@ -1,5 +1,6 @@
 #![allow(dead_code)] // REMOVE THIS LINE after fully implementing this functionality
 
+use std::cmp::Ordering::{Equal, Less};
 use std::collections::HashMap;
 use std::mem::replace;
 use std::ops::{Bound, Deref};
@@ -19,7 +20,7 @@ use crate::compact::{
 use crate::iterators::merge_iterator::MergeIterator;
 use crate::iterators::two_merge_iterator::TwoMergeIterator;
 use crate::iterators::StorageIterator;
-use crate::key::KeySlice;
+use crate::key::{Key, KeySlice};
 use crate::lsm_iterator::{FusedIterator, LsmIterator};
 use crate::lsm_storage;
 use crate::manifest::Manifest;
@@ -290,26 +291,47 @@ impl LsmStorageInner {
     pub fn get(&self, key: &[u8]) -> Result<Option<Bytes>> {
         // let _ = self.state_lock.lock();
         let binding = self.state.read();
-        let lsm_storage_state = binding.deref();
-        let res = lsm_storage_state.memtable.get(key);
+        let lsm_storage = binding.deref();
+        let res = lsm_storage.memtable.get(key);
         if let Some(val) = &res {
             if val.is_empty() {
                 return Ok(None);
             }
-            Ok(res)
-        } else {
-            // if this key not found in current memtable, then found in older memtable
-            for imm_table in &lsm_storage_state.imm_memtables {
-                let res = imm_table.get(key);
-                if let Some(val) = &res {
-                    if val.is_empty() {
-                        return Ok(None);
-                    }
-                    return Ok(res);
-                }
-            }
-            Ok(None)
+            return Ok(res);
         }
+        // if this key not found in current memtable, then found in older memtable
+        for imm_table in &lsm_storage.imm_memtables {
+            let res = imm_table.get(key);
+            if let Some(val) = &res {
+                if val.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(res);
+            }
+        }
+        // if this key not found in whole mem table(include mem table and immmem table)
+        // So find in sst, firstly find in l0, then find in l1~lx
+        let mut iters = vec![];
+        for l0_sst_id in &lsm_storage.l0_sstables {
+            let sst = lsm_storage.sstables.get(l0_sst_id).unwrap();
+            let _ = SsTableIterator::create_and_seek_to_key(sst.clone(), KeySlice::from_slice(key)).map(|iter| {
+                iters.push(Box::new(iter));
+            });
+        }
+        let mut l0_sst_merge_iter = MergeIterator::create(iters);
+        while l0_sst_merge_iter.is_valid() &&
+            l0_sst_merge_iter.key().cmp(&Key::from_slice(key)) == Less {
+            l0_sst_merge_iter.next()?;
+        }
+        if l0_sst_merge_iter.is_valid() && l0_sst_merge_iter.key().cmp(&Key::from_slice(key)) == Equal {
+            return if l0_sst_merge_iter.value().is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(Bytes::copy_from_slice(l0_sst_merge_iter.value())))
+            }
+        }
+        // todo(leehao): just look at level 0, need to look at other layers
+        Ok(None)
     }
 
     /// Write a batch of data into the storage. Implement in week 2 day 7.
