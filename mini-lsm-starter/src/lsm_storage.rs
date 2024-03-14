@@ -396,6 +396,7 @@ impl LsmStorageInner {
 
     /// Force freeze the current memtable to an immutable memtable
     pub fn force_freeze_memtable(&self, _: &MutexGuard<'_, ()>) -> Result<()> {
+        println!("begin freeze");
         let next_id = self.next_sst_id();
         let new_mem_table = if self.options.enable_wal {
             MemTable::create_with_wal(next_id, self.path.clone())?
@@ -408,6 +409,7 @@ impl LsmStorageInner {
         lsm_storage_state.imm_memtables.insert(0, old_mem_table);
         *guard = Arc::new(lsm_storage_state);
         drop(guard);
+        println!("end freeze");
         Ok(())
     }
 
