@@ -20,10 +20,26 @@ fn test_task1_storage_scan() {
     storage.put(b"00", b"2333333").unwrap();
     storage.put(b"4", b"23").unwrap();
     sync(&storage);
+    check_lsm_iter_result_by_key(
+        &mut storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap(),
+        vec![
+            (Bytes::from("0"), Bytes::from("2333333")),
+            (Bytes::from("00"), Bytes::from("2333333")),
+            (Bytes::from("4"), Bytes::from("23")),
+        ],
+    );
 
     storage.delete(b"4").unwrap();
     sync(&storage);
-
+    // sst1 (0, 2333333) (00, 2333333) (4, 23)
+    // sst2 (4, del)
+    check_lsm_iter_result_by_key(
+        &mut storage.scan(Bound::Unbounded, Bound::Unbounded).unwrap(),
+        vec![
+            (Bytes::from("0"), Bytes::from("2333333")),
+            (Bytes::from("00"), Bytes::from("2333333")),
+        ],
+    );
     storage.put(b"1", b"233").unwrap();
     storage.put(b"2", b"2333").unwrap();
     storage

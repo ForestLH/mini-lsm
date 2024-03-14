@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::mem::replace;
 use std::ops::{Bound, Deref};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use anyhow::{Error, Ok, Result};
@@ -26,7 +26,7 @@ use crate::lsm_storage;
 use crate::manifest::Manifest;
 use crate::mem_table::{self, map_bound, MemTable, MemTableIterator};
 use crate::mvcc::LsmMvccInner;
-use crate::table::{SsTable, SsTableIterator};
+use crate::table::{SsTable, SsTableBuilder, SsTableIterator};
 
 /// Key = (sst id, key) Value = (Arc Block)
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
@@ -349,8 +349,7 @@ impl LsmStorageInner {
         let res;
         let size;
         {
-            let guard = self.state.write();
-            let lsm_storage_state = guard.as_ref();
+            let lsm_storage_state = self.state.write();
             let mem_table = &lsm_storage_state.memtable;
             res = mem_table.put(key, value);
             size = mem_table.approximate_size();
@@ -414,7 +413,29 @@ impl LsmStorageInner {
 
     /// Force flush the earliest-created immutable memtable to disk
     pub fn force_flush_next_imm_memtable(&self) -> Result<()> {
-        unimplemented!()
+        let mut sst_builder =
+            SsTableBuilder::new(self.options.target_sst_size);
+        let next_imm_memtable =
+        {
+            let mut state = self.state.write();
+            let mut sta = state.as_ref().clone();
+            let res = sta.imm_memtables.pop().expect("No imm mem table in lsm storage").clone();
+            *state = Arc::new(sta);
+            res
+        };
+        let id = next_imm_memtable.id();
+        let imm_iter = next_imm_memtable.scan(Bound::Unbounded, Bound::Unbounded);
+        sst_builder.add_iter(imm_iter)?;
+        let new_sst_name = format!("{}.sst", id);
+        let new_sst = sst_builder.build(id, Some(Arc::clone(&self.block_cache)), &self.path.join(new_sst_name))?;
+        {
+            let mut state = self.state.write();
+            let mut sta = state.as_ref().clone();
+            sta.l0_sstables.insert(0, id);
+            sta.sstables.insert(id, Arc::new(new_sst));
+            *state = Arc::new(sta);
+        }
+        Ok(())
     }
 
     pub fn new_txn(&self) -> Result<()> {

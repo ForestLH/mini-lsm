@@ -11,6 +11,7 @@ use super::{BlockMeta, SsTable};
 use crate::key::KeyBytes;
 use crate::table::FileObject;
 use crate::{block::BlockBuilder, key::KeySlice, lsm_storage::BlockCache};
+use crate::iterators::StorageIterator;
 
 /// Builds an SSTable from key-value pairs.
 pub struct SsTableBuilder {
@@ -70,6 +71,16 @@ impl SsTableBuilder {
             last_meta.last_key = KeyBytes::from_bytes(Bytes::copy_from_slice(key.raw_ref()));
         });
         self.last_key = Vec::from(key.raw_ref());
+    }
+    pub fn add_iter<I>(&mut self, mut iter: I) -> Result<()>
+    where
+        I: for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>
+    {
+        while iter.is_valid() {
+            self.add(iter.key(), iter.value());
+            iter.next()?;
+        }
+        Ok(())
     }
 
     /// Get the estimated size of the SSTable.
